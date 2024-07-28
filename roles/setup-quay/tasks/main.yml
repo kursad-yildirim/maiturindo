@@ -1,0 +1,64 @@
+- name: SETUP-QUAY => create config directory if it does not exist
+  ansible.builtin.file:
+    path: "{{ quay.confdir }}"
+    state: directory
+    mode: '0755'
+- name: SETUP-QUAY => deploy quay configuration file
+  template:
+    src: config.j2
+    dest: "{{ quay.confdir }}/config.yaml"
+- name: SETUP-QUAY => deploy ssl certificate
+  ansible.builtin.copy:
+    src: "{{ lookup('env','MAIN_FOLDER_PATH') }}/files/{{ service_name }}.cert"
+    dest: "{{ quay.confdir }}/ssl.cert"
+    owner: root
+    group: root
+    mode: '0644'
+- name: SETUP-QUAY => deploy ssl key
+  ansible.builtin.copy:
+    src: "{{ lookup('env','MAIN_FOLDER_PATH') }}/files/{{ service_name }}.key"
+    dest: "{{ quay.confdir }}/ssl.key"
+    owner: root
+    group: root
+    mode: '0600'
+- name: SETUP-QUAY => create storage directory if it does not exist
+  ansible.builtin.file:
+    path: "{{ quay.stordir }}"
+    state: directory
+    mode: '0755'
+- name: SETUP-QUAY => set directory permissions
+  shell: |
+    setfacl -m u:1001:-wx {{ quay.stordir }}
+    setfacl -m u:1001:rwx "{{ quay.confdir }}"
+    setfacl -m u:1001:rw "{{ quay.confdir }}"/ssl*
+  args:
+    executable: /bin/bash
+- name: SETUP-QUAY => create quay container with systemd service file generated in {{ main_folder }}/systemd
+  containers.podman.podman_container:
+    name: "{{ service_name }}-app"
+    image: "{{ quay.image }}:{{ quay.tag }}"
+    state: started
+    recreate: true
+    ports:
+      - "{{ service_ip }}:{{ quay.http_port.ext }}:{{ quay.http_port.int }}"
+      - "{{ service_ip }}:{{ quay.https_port.ext }}:{{ quay.https_port.int }}"
+    volumes:
+      - "{{ quay.confdir }}:/conf/stack:Z"
+      - "{{ quay.stordir }}:/datastorage:Z"
+    generate_systemd:
+      path: "{{ main_folder }}/systemd"
+      restart_policy: always
+      stop_timeout: 120
+      names: true
+- name: SETUP-QUAY => copy systemd unit file
+  command: >
+    mv {{ main_folder }}/systemd/container-{{ service_name }}-app.service /etc/systemd/system/
+- name: SETUP-QUAY => force systemd to reread configs
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+- name: SETUP-QUAY => enable service container-{{ service_name }}-app
+  ansible.builtin.systemd_service:
+    name: container-{{ service_name }}-app
+    enabled: true
+    state: restarted
+    masked: no

@@ -1,0 +1,28 @@
+
+- name: SETUP-CACHE => create redis container with systemd service file generated in {{ main_folder }}/systemd
+  containers.podman.podman_container:
+    name: "{{ service_name }}-cache"
+    image: "{{ cache.image }}:{{ cache.tag }}"
+    state: started
+    recreate: true
+    ports:
+      - "{{ service_ip }}:{{ cache.port }}:{{ cache.port }}"
+    env:
+      REDIS_PASSWORD: "{{ password }}"
+    generate_systemd:
+      path: "{{ main_folder }}/systemd"
+      restart_policy: always
+      stop_timeout: 120
+      names: true
+- name: SETUP-CACHE => copy systemd unit file
+  command: >
+    mv {{ main_folder }}/systemd/container-{{ service_name }}-cache.service /etc/systemd/system/
+- name: SETUP-CACHE => force systemd to reread configs
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+- name: SETUP-CACHE => enable service container-{{ service_name }}-cache
+  ansible.builtin.systemd_service:
+    name: container-{{ service_name }}-cache
+    enabled: true
+    state: restarted
+    masked: no

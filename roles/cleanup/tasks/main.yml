@@ -1,0 +1,32 @@
+---
+- name: CLEANUP => remove db service unit file
+  ansible.builtin.file:
+    path: "/etc/systemd/system/container-{{ service_name }}-db.service"
+    state: absent
+- name: CLEANUP => remove cache service unit file
+  ansible.builtin.file:
+    path: "/etc/systemd/system/container-{{ service_name }}-cache.service"
+    state: absent
+- name: CLEANUP => remove quay service unit file
+  ansible.builtin.file:
+    path: "/etc/systemd/system/container-{{ service_name }}-app.service"
+    state: absent
+- name: CLEANUP => force systemd reread
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+- name: CLEANUP => Remove quay container if it exists
+  containers.podman.podman_container:
+    name: "{{ service_name }}-app"
+    state: absent
+- name: CLEANUP => Remove db container if it exists
+  containers.podman.podman_container:
+    name: "{{ service_name }}-db"
+    state: absent
+- name: CLEANUP => Remove cache container if it exists
+  containers.podman.podman_container:
+    name: "{{ service_name }}-cache"
+    state: absent
+- name: CLEANUP => Remove main directory if it exists
+  ansible.builtin.file:
+    path: "{{ main_folder }}"
+    state: absent

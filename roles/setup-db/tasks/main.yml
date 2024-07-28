@@ -1,0 +1,52 @@
+- name: SETUP-DB => create db directory if it does not exist
+  ansible.builtin.file:
+    path: "{{ db.folder }}"
+    state: directory
+    mode: '0755'
+- name: SETUP-DB => set db directory permissions
+  command: >
+    setfacl -m u:26:-wx {{ db.folder }}
+- name: SETUP-DB => create db container with systemd service file generated in {{ main_folder }}/systemd
+  containers.podman.podman_container:
+    name: "{{ service_name }}-db"
+    image: "{{ db.image }}:{{ db.tag }}"
+    state: started
+    recreate: true
+    ports:
+      - "{{ service_ip }}:{{ db.port }}:{{ db.port }}"
+    env:
+      POSTGRESQL_USER: "{{ username}}"
+      POSTGRESQL_PASSWORD: "{{ password }}"
+      POSTGRESQL_DATABASE: "{{ db.name }}"
+      POSTGRESQL_ADMIN_PASSWORD: "{{ password }}"
+    volumes:
+      - "{{ db.folder }}:/var/lib/pgsql/data:Z"
+    generate_systemd:
+      path: "{{ main_folder }}/systemd"
+      restart_policy: always
+      stop_timeout: 120
+      names: true
+- name: SETUP-DB => copy systemd unit file
+  command: >
+    mv {{ main_folder }}/systemd/container-{{ service_name }}-db.service /etc/systemd/system/
+- name: SETUP-DB => force systemd to reread configs
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+- name: SETUP-DB => enable service container-{{ service_name }}-db
+  ansible.builtin.systemd_service:
+    name: container-{{ service_name }}-db
+    enabled: true
+    state: restarted
+    masked: no
+- name: SETUP-DB => create db extension
+  containers.podman.podman_container_exec:
+    name: "{{ service_name }}-db"
+    argv:
+      - /bin/sh
+      - -c
+      - echo "CREATE EXTENSION IF NOT EXISTS pg_trgm" | psql -d quay -U postgres
+  register: create_extension_result
+- name: SETUP-DB => print create extension result
+  debug:
+    msg: "{{ create_extension_result.stdout }}"
+  failed_when: not (create_extension_result.stdout in "CREATE EXTENSION\n")

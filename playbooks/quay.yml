@@ -1,0 +1,19 @@
+---
+- name: ====== SETUP DNS ======
+  hosts: dns_servers
+  become: yes
+  vars_files:
+    - "{{ lookup('env','MAIN_FOLDER_PATH') }}/vars/quay.yml"
+  roles:
+    - dns
+- name: ====== INSTALL QUAY ======
+  hosts: quay_host
+  become: yes
+  vars_files:
+    - "{{ lookup('env','MAIN_FOLDER_PATH') }}/vars/quay.yml"
+  roles:
+    - cleanup
+    - global
+    - setup-db
+    - setup-cache
+    - setup-quay

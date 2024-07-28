@@ -1,0 +1,62 @@
+---
+- name: DNS => remove previous forward records
+  lineinfile:
+    path: "{{ defs.zone_dir }}/{{ defs.forward_zone_file }}"
+    state: absent
+    regexp: '^{{ item.record }}'
+  loop: "{{ dns.records }}"
+- name: DNS => remove previous reverse records
+  lineinfile:
+    path: "{{ defs.zone_dir }}/{{ defs.reverse_zone_file }}"
+    state: absent
+    regexp: "^{{ item.value.split('.')[3] }}.{{ item.value.split('.')[2] }}"
+  loop: "{{ dns.records }}"
+  when: item.type == 'A'
+- name: DNS => Add forward records
+  lineinfile:
+    path: "{{ defs.zone_dir }}/{{ defs.forward_zone_file }}"
+    line: "{{ item.record }}  IN  {{ item.type }}   {{ item.value }} ; {{ item.description }}"
+    create: yes
+    insertafter: EOF
+  loop: "{{ dns.records }}"
+  notify: Restart named
+- name: DNS => add reverse records
+  lineinfile:
+    path: "{{ defs.zone_dir }}/{{ defs.reverse_zone_file }}"
+    line: "{{ item.value.split('.')[3] }}.{{ item.value.split('.')[2] }} IN  PTR {{ item.record }}.{{ domain }}. ; {{ item.description }}"
+    create: yes
+    insertafter: EOF
+  loop: "{{ dns.records }}"
+  when: item.type == 'A'
+  notify: Restart named
+- name: DNS => restart named service is
+  service:
+    name: named
+    state: restarted
+    enabled: true
+- name: DNS => verify DNS records
+  block:
+    - name: DNS => Verify -> query forward records
+      command: >
+        dig @localhost {{ item.record }}.{{ domain }} +short
+      loop: "{{ dns.records }}"
+      register: forward_queries
+
+    - name: DNS => Verify -> forward query results
+      debug:
+        msg: "{{ item.item.record }}.{{ domain }} => {{ item.item.value }}"
+      failed_when: not (item.stdout|length > 0 and item.item.value in item.stdout)
+      loop: "{{ forward_queries.results }}"
+
+    - name: DNS => Verify -> query reverse records
+      command: >
+        dig @localhost -x {{ item.value }} +short
+      loop: "{{ dns.records }}"
+      when: item.type == 'A'
+      register: forward_queries
+    - name: DNS => Verify -> reverse query results
+      debug:
+        msg: "{{ item.item.value }} => {{ item.item.record }}.{{ domain }}"
+      failed_when: not (item.stdout|length > 0 and item.item.record in item.stdout)
+      loop: "{{ forward_queries.results }}"
+      when: item.item.type == 'A'

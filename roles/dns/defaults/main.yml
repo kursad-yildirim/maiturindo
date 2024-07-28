@@ -1,0 +1,5 @@
+---
+defs:
+  zone_dir: /var/named/zone
+  forward_zone_file: example.com
+  reverse_zone_file: 10.10.in-addr.arpa
